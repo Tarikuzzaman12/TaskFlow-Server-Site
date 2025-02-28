@@ -1,48 +1,66 @@
-const express= require("express");
-const cors =require ('cors');
-const app =express()
-require('dotenv').config()
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const express = require("express");
+const cors = require("cors");
+const { MongoClient, ObjectId } = require("mongodb");
+require("dotenv").config();
 
-const port = process.env.PORT || 5000
+const app = express();
+const port = process.env.PORT || 5000;
 
-// middleware
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-
-// const uri = "mongodb+srv://<db_username>:<db_password>@cluster0.uuqn6.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+// MongoDB connection
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.uuqn6.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
-
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
-const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  }
-});
+const client = new MongoClient(uri);
 
 async function run() {
-  try {
-    // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
-    // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
-  } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
-  }
+    try {
+        await client.connect();
+        console.log(" Connected to MongoDB");
+
+        const db = client.db("TaskFlow");
+        const tasksCollection = db.collection("tasks");
+
+        // 👉 Get all tasks
+        app.get("/tasks", async (req, res) => {
+            const tasks = await tasksCollection.find().toArray();
+            res.send(tasks);
+        });
+
+        // 👉 Add a new task
+        app.post("/tasks", async (req, res) => {
+            const task = req.body;
+            const result = await tasksCollection.insertOne(task);
+            res.send({ ...task, _id: result.insertedId });
+        });
+
+        // 👉 Update task (Full Update - for Edit Form & DnD both)
+        app.put("/tasks/:id", async (req, res) => {
+            const { id } = req.params;
+            const updatedData = req.body;
+            const result = await tasksCollection.findOneAndUpdate(
+                { _id: new ObjectId(id) },
+                { $set: updatedData },
+                { returnDocument: "after" }  // Return the updated document
+            );
+            res.json(result.value);  // Send back updated task
+        });
+
+        // 👉 Delete a task
+        app.delete("/tasks/:id", async (req, res) => {
+            const id = req.params.id;
+            await tasksCollection.deleteOne({ _id: new ObjectId(id) });
+            res.send({ message: "Task deleted successfully" });
+        });
+
+        // Start server
+        app.listen(port, () => {
+            console.log(`Server running on port ${port}`);
+        });
+    } catch (error) {
+        console.error(" MongoDB connection failed", error);
+    }
 }
-run().catch(console.log);
 
-
-
-app.get('/',(req, res) => {
-res.send('Task is starting')
-})
-
-app.listen(port, () => {
-    console.log(`server is running on port: ${port}`)
-})
+run();
